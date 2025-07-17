@@ -1,0 +1,104 @@
+{
+  "name": "Email Offer Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "watch",
+        "additionalFields": {
+          "subject": "Property Inquiry:",
+          "includeSpamTrash": false
+        }
+      },
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:5001/zestimate",
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParametersJson": "{ \"address\": \"={{$json.body.textPlain.match(/Address:\\\\s*(.*)/i)[1]}}\" }"
+      },
+      "name": "Get Zestimate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = items[0].json;\nconst body = data.body.textPlain;\nlet offer = null;\n\n// Use Zestimate if present\nif (data.zestimate) {\n  offer = data.zestimate * 0.6;\n} else {\n  // Fallback to asking price in email body\n  const ask = body.match(/Price:\\s*\\$?([\\d,]+)/i);\n  if (ask) {\n    const asking = Number(ask[1].replace(/,/g, ''));\n    offer = asking * 0.6;\n  }\n}\n\nitems[0].json.offerPrice = offer;\nreturn items;\n"
+      },
+      "name": "Calculate Offer",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "additionalFields": {
+          "to": "={{$json.from}}",
+          "subject": "Offer on your property",
+          "text": "Hello,\\n\\nBased on the information provided, our offer for the property at {{$json.address}} is ${{$json.offerPrice}}.\\n\\nBest regards,\\nYour Company"
+        }
+      },
+      "name": "Send Offer Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [
+        950,
+        300
+      ],
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Zestimate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Zestimate": {
+      "main": [
+        [
+          {
+            "node": "Calculate Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Offer": {
+      "main": [
+        [
+          {
+            "node": "Send Offer Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "versionId": "1"
+}
